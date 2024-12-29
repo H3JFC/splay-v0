@@ -32,6 +32,9 @@ build: deps
 	docker tag ${IMAGE_NAME}:latest ${ECR}/${IMAGE_NAME}:latest; \
 	docker tag ${IMAGE_NAME}:latest ${ECR}/${IMAGE_NAME}:${COMMIT};
 
+recv: deps
+	go run cmd/recv/main.go
+
 serve: deps
 	air -c .air.toml
 
