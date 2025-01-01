@@ -3,30 +3,40 @@ package main
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
-	"splay/ui"
-	"strings"
+	"os"
 	"time"
 
+	"github.com/kelseyhightower/envconfig"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// Dist is where the static files are stored
+//
+//go:embed app/dist/*
+var AppDist embed.FS
+
 const (
-	timeout         = 10 * time.Second
-	XForwardedFor   = "X-Forwarded-For"
-	maxRetries      = 4
-	minSleepSeconds = 1
-	maxSleepSeconds = 20
-	NoStatus        = ""
-	StatusOkBot     = 200
-	StatusOkTop     = 300
+	StaticWildcardParam = "path"
+	timeout             = 10 * time.Second
+	XForwardedFor       = "X-Forwarded-For"
+	maxRetries          = 4
+	minSleepSeconds     = 1
+	maxSleepSeconds     = 20
+	NoStatus            = ""
+	StatusOkBot         = 200
+	StatusOkTop         = 300
 )
 
 var (
@@ -44,10 +54,49 @@ var (
 	httpClient = &http.Client{
 		Timeout: timeout,
 	}
+
+	// Commit is the git commit hash.
+	Commit string
+
+	config Config
+
+	static fs.FS
 )
+
+type Config struct {
+	Env    string `default:"development"`
+	Debug  bool   `default:"false"`
+	Commit string `default:"" required:"false"`
+}
 
 type BoundFunc = func(e *core.ServeEvent) error
 type RequestFunc = func(e *core.RequestEvent) error
+
+func init() {
+	err := envconfig.Process("splay", &config)
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+
+	config.Commit = Commit
+
+	var level slog.Level = slog.LevelInfo
+	if config.Debug {
+		level = slog.LevelDebug
+	}
+
+	h := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	l := slog.New(h)
+	slog.SetDefault(l)
+	slog.Debug("Config", fmt.Sprintf("%+v", config))
+
+	static, err = fs.Sub(AppDist, "app/dist")
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+}
 
 func main() {
 	app := pocketbase.New()
@@ -60,14 +109,18 @@ func main() {
 
 func BindFunc(app *pocketbase.PocketBase) BoundFunc {
 	return func(se *core.ServeEvent) error {
-		se.Router.GET("/", func(e *core.RequestEvent) error {
-			html := &strings.Builder{}
-			if err := ui.Hello("hector").Render(context.Background(), html); err != nil {
-				return e.NotFoundError("", err)
+		se.Router.GET("/{path...}", apis.Static(static, true)).BindFunc(func(e *core.RequestEvent) error {
+			// ignore root path
+			if e.Request.PathValue(StaticWildcardParam) != "" {
+				e.Response.Header().Set("Cache-Control", "max-age=1209600, stale-while-revalidate=86400")
 			}
 
-			return e.HTML(http.StatusOK, html.String())
-		})
+			// add a default CSP
+			if e.Response.Header().Get("Content-Security-Policy") == "" {
+				e.Response.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' http://127.0.0.1:* data: blob:; connect-src 'self' http://127.0.0.1:*; script-src 'self' 'sha256-GRUzBA7PzKYug7pqxv5rJaec5bwDCw1Vo6/IXwvD3Tc='")
+			}
+			return e.Next()
+		}).Bind(apis.Gzip())
 
 		se.Router.POST("/buckets/{slug}", HandleBucketReceive(app))
 
