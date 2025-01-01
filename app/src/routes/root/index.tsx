@@ -1,14 +1,24 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
+import reactLogo from '@/assets/react.svg'
 import viteLogo from '/vite.svg'
-import './App.css'
+import PocketBase from 'pocketbase';
+
+const pb = new PocketBase('/');
 
 function App() {
   const [count, setCount] = useState(0)
 
+  const a = pb.collection('users').authWithPassword('hector.friedman.cintron@gmail.com','Password123')
+  a.then((res) => {
+    console.log(res)
+  }).catch((err) => {
+    console.log(err)
+  })
+
   return (
     <>
-      <div>
+      <div className="text-red-500">
+        Hello
         <a href="https://vite.dev" target="_blank">
           <img src={viteLogo} className="logo" alt="Vite logo" />
         </a>
