@@ -100,14 +100,14 @@ func init() {
 
 func main() {
 	app := pocketbase.New()
-	app.OnServe().BindFunc(BindFunc(app))
+	app.OnServe().BindFunc(BindFunc(app, config))
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func BindFunc(app *pocketbase.PocketBase) BoundFunc {
+func BindFunc(app *pocketbase.PocketBase, c Config) BoundFunc {
 	return func(se *core.ServeEvent) error {
 		se.Router.GET("/{path...}", apis.Static(static, true)).BindFunc(func(e *core.RequestEvent) error {
 			// ignore root path

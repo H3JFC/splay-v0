@@ -1,8 +1,8 @@
 import { GalleryVerticalEnd } from "lucide-react"
 import { Link } from "react-router"
-import { LoginForm } from "@/components/auth-form"
+import { ForgotPasswordForm } from "@/components/auth-form"
 
-export default function LoginPage() {
+export default function ForgotPasswordPage() {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
       <div className="flex w-full max-w-sm flex-col gap-6">
@@ -12,7 +12,7 @@ export default function LoginPage() {
           </div>
           Splay
         </Link>
-        <LoginForm />
+        <ForgotPasswordForm />
       </div>
     </div>
   )
