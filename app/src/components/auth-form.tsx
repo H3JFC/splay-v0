@@ -234,7 +234,7 @@ export function AuthFormWrapper({
         </CardContent>
       </Card>
       <div className="text-balance text-center text-xs text-slate-500 [&_a]:underline [&_a]:underline-offset-4 [&_a]:hover:text-slate-900  dark:text-slate-400 dark:[&_a]:hover:text-slate-50">
-        By clicking "{action}", you agree to our <Link to="/tos">Terms of Service</Link>{" "}
+        By clicking "{action}", you agree to our <Link to="/terms-of-service">Terms of Service</Link>{" "}
         and <Link to="/privacy-policy">Privacy Policy</Link>.
       </div>
     </div>
@@ -301,7 +301,7 @@ export function ForgotPasswordForm({
         </CardContent>
       </Card>
       <div className="text-balance text-center text-xs text-slate-500 [&_a]:underline [&_a]:underline-offset-4 [&_a]:hover:text-slate-900  dark:text-slate-400 dark:[&_a]:hover:text-slate-50">
-        By clicking "Reset password", you agree to our <Link to="/tos">Terms of Service</Link>{" "}
+        By clicking "Reset password", you agree to our <Link to="/terms-of-service">Terms of Service</Link>{" "}
         and <Link to="/privacy-policy">Privacy Policy</Link>.
       </div>
     </div>

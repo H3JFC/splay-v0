@@ -12,6 +12,8 @@ import ForgotPassword from '@/routes/forgot-password'
 import ErrorPage from "@/error-page"
 import { PocketBaseProvider } from '@/lib/pocketbase'
 import { Toaster } from "@/components/ui/toaster"
+import PrivacyPolicy from './routes/privacy-policy'
+import TermsOfService from './routes/terms-of-service'
 
 const router = createBrowserRouter([
   {
@@ -30,6 +32,14 @@ const router = createBrowserRouter([
   {
     path: "/forgot-password",
     element: <ForgotPassword />,
+  },
+  {
+    path: "/privacy-policy",
+    element: <PrivacyPolicy />,
+  },
+  {
+    path: "/terms-of-service",
+    element: <TermsOfService />,
   }
 ])
 
