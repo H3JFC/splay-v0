@@ -1,6 +1,6 @@
 import { GalleryVerticalEnd } from "lucide-react"
 import { Link } from "react-router"
-import { ForgotPasswordForm } from "@/components/auth-form"
+import { ForgotPasswordForm } from "@/components/forgot-password-form"
 
 export default function ForgotPasswordPage() {
   return (

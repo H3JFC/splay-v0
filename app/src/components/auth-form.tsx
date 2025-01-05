@@ -1,6 +1,4 @@
-import { useState } from "react"
-import { useToast } from "@/hooks/use-toast"
-import { useNavigate } from "react-router-dom"
+import { useOAuth, Provider } from "@/lib/hooks/use-oauth"
 import { cn } from "@/lib/utils"
 import { Link } from "react-router"
 import { Button } from "@/components/ui/button"
@@ -11,211 +9,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { usePocketBase } from "@/lib/pocketbase"
-import { useForm } from "react-hook-form";
-import { ClientResponseError } from "pocketbase"
 
-enum AuthType {
+export enum AuthType {
   Login,
   SignUp,
   ForgotPassword,
 };
 
-type LoginSubmit = {
-  email: string;
-  password: string;
-}
-
-type SignUpSubmit = {
-  email: string;
-  password: string;
-  passwordConfirm: string;
-}
-
-type ForgotPasswordSubmit = {
-  email: string;
-}
-
 type AuthFormProps = {
-  authType: AuthType.Login | AuthType.SignUp;
+  authType: AuthType;
 } & React.ComponentPropsWithoutRef<"div">;
-
-type LoginFormProps = {} & React.ComponentPropsWithoutRef<"div">;
-type SignUpFormProps = {} & React.ComponentPropsWithoutRef<"div">;
-type ForgotPasswordFormProps = {} & React.ComponentPropsWithoutRef<"div">;
-
-export function LoginForm({
-  ...props
-}: LoginFormProps) {
-  const { toast } = useToast();
-  const pb = usePocketBase();
-  const { register, handleSubmit, formState: { errors } } = useForm();
-  const navigate = useNavigate();
-
-  const onSubmit = async (data: any) => {
-    try {
-      const { email: usernameOrEmail, password } = data as LoginSubmit;
-      await pb.collection('users').authWithPassword(usernameOrEmail, password)
-      navigate("/");
-    } catch (e) {
-      let { message } = (e as ClientResponseError);
-      console.error(e);
-      toast({
-        title: "Uh oh! Something went wrong.",
-        description: message,
-        variant: "destructive",
-      })
-    }
-  }
-
-  return (
-    <AuthFormWrapper authType={AuthType.Login} {...props}>
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <div className="grid gap-6">
-          <OAuthSection authType={AuthType.Login} />
-          <div className="grid gap-6">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="user@example.com"
-                {...register("email", { required: true, pattern: /^[^@\s]*@[^\s@]*$/ })}
-              />
-              <div className="text-red-400 text-sm">
-                {errors.email && errors.email.type === "required" && <span>Email is required</span>}
-                {errors.email && errors.email.type === "pattern" && <span>Email must be valid</span>}
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
-                <Link
-                  to="/forgot-password"
-                  className="ml-auto text-sm underline-offset-4 hover:underline"
-                >
-                  Forgot your password?
-                </Link>
-              </div>
-              <Input id="password" type="password"
-                {...register("password", { required: true, minLength: 8, maxLength: 71 })}
-              />
-              <div className="text-red-400 text-sm">
-                {errors.password && errors.password.type === "required" && <span>Password is required</span>}
-                {errors.password && errors.password.type === "maxLength" && <span>Password must be 71 characters or less</span>}
-                {errors.password && errors.password.type === "minLength" && <span>Password must be at least 8 characters</span>}
-              </div>
-            </div>
-            <Button type="submit" className="w-full">
-              Log in
-            </Button>
-          </div>
-          <Footer authType={AuthType.Login} />
-        </div>
-      </form>
-    </AuthFormWrapper>
-  )
-}
-
-export function SignUpForm({
-  ...props
-}: SignUpFormProps) {
-  const { toast } = useToast();
-  const pb = usePocketBase();
-  const { register, handleSubmit, formState: { errors } } = useForm();
-  const [passwordConfirmError, setPasswordConfirmError] = useState<string | null>(null)
-  const navigate = useNavigate();
-
-  const validateAndSubmit = (e?: React.BaseSyntheticEvent): Promise<void> => {
-    e?.preventDefault();
-    const formData = new FormData(e?.target as HTMLFormElement);
-    let data: Partial<SignUpSubmit> = {};
-    for (const [key, value] of formData.entries()) {
-      // @ts-ignore
-      data[key] = value;
-    }
-
-    const { password, passwordConfirm } = data as SignUpSubmit;
-    if (password !== passwordConfirm) {
-      setPasswordConfirmError("Password Confirmation does not match Password");
-    }
-
-    return handleSubmit(onSubmit)(e)
-  }
-
-  const onSubmit = async (data: any) => {
-    const { email, password } = data as SignUpSubmit;
-    try {
-      await pb.collection('users').create({ email, password })
-      await pb.collection('users').authWithPassword(email, password)
-      navigate("/");
-    } catch (e) {
-      let { message } = (e as ClientResponseError);
-      console.error(e);
-      toast({
-        title: "Uh oh! Something went wrong.",
-        description: message,
-        variant: "destructive",
-      })
-    }
-  }
-
-  return (
-    <AuthFormWrapper authType={AuthType.SignUp} {...props}>
-      <form onSubmit={validateAndSubmit}>
-        <div className="grid gap-6">
-          <OAuthSection authType={AuthType.SignUp} />
-          <div className="grid gap-6">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="user@example.com"
-                {...register("email", { required: true, pattern: /^[^@\s]*@[^\s@]*$/ })}
-              />
-              <div className="text-red-400 text-sm">
-                {errors.email && errors.email.type === "required" && <span>Email is required</span>}
-                {errors.email && errors.email.type === "pattern" && <span>Email must be valid</span>}
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
-              </div>
-              <Input id="password" type="password"
-                {...register("password", { required: true, minLength: 8, maxLength: 71 })}
-              />
-              <div className="text-red-400 text-sm">
-                {errors.password && errors.password.type === "required" && <span>Password is required</span>}
-                {errors.password && errors.password.type === "maxLength" && <span>Password must be 71 characters or less</span>}
-                {errors.password && errors.password.type === "minLength" && <span>Password must be at least 8 characters</span>}
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="passwordConfirm">Password Confirmation</Label>
-              </div>
-              <Input id="passwordConfirm" type="password" onClick={() => setPasswordConfirmError(null)}
-                {...register("passwordConfirm", { required: true })}
-              />
-              <div className="text-red-400 text-sm">
-                {errors.passwordConfirm && errors.passwordConfirm.type === "required" && <div>Password Confirmation is required</div>}
-                {passwordConfirmError && <div>{passwordConfirmError}</div>}
-              </div>
-            </div>
-            <Button type="submit" className="w-full">
-              Sign up
-            </Button>
-          </div>
-          <Footer authType={AuthType.SignUp} />
-        </div>
-      </form>
-    </AuthFormWrapper>
-  )
-}
 
 export function AuthFormWrapper({
   authType,
@@ -241,78 +44,11 @@ export function AuthFormWrapper({
   )
 }
 
-export function ForgotPasswordForm({
-  className,
-  ...props
-}: ForgotPasswordFormProps) {
-  const pb = usePocketBase();
-  const { toast } = useToast();
-  const { register, handleSubmit, formState: { errors } } = useForm();
-
-  const authType = AuthType.ForgotPassword;
-
-  const onSubmit = async (data: any) => {
-    const { email } = data as ForgotPasswordSubmit
-    try {
-      await pb.collection('users').requestPasswordReset(email)
-      toast({
-        title: "Password reset email sent.",
-        description: "Please check your email for instructions on how to reset your password.",
-      })
-    } catch (error) {
-      let { message } = (error as ClientResponseError);
-      console.error(error);
-      toast({
-        title: "Uh oh! Something went wrong.",
-        description: message,
-        variant: "destructive",
-      })
-    }
-  }
-
-  return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <Header authType={authType} />
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <div className="grid gap-6">
-              <div className="grid gap-6">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="user@example.com"
-                    {...register("email", { required: true, pattern: /^[^@\s]*@[^\s@]*$/ })}
-                  />
-                  <div className="text-red-400 text-sm">
-                    {errors.email && errors.email.type === "required" && <span>Email is required</span>}
-                    {errors.email && errors.email.type === "pattern" && <span>Email must be valid</span>}
-                  </div>
-                </div>
-                <Button type="submit" className="w-full">
-                  Reset password
-                </Button>
-              </div>
-              <Footer authType={authType} />
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-      <div className="text-balance text-center text-xs text-slate-500 [&_a]:underline [&_a]:underline-offset-4 [&_a]:hover:text-slate-900  dark:text-slate-400 dark:[&_a]:hover:text-slate-50">
-        By clicking "Reset password", you agree to our <Link to="/terms-of-service">Terms of Service</Link>{" "}
-        and <Link to="/privacy-policy">Privacy Policy</Link>.
-      </div>
-    </div>
-  )
-}
-
-type FooterProps = {
+export type FooterProps = {
   authType: AuthType;
 }
 
-function Footer({ authType }: FooterProps) {
+export function Footer({ authType }: FooterProps) {
   switch (authType) {
     case AuthType.Login:
       return (
@@ -344,29 +80,14 @@ function Footer({ authType }: FooterProps) {
   }
 }
 
-type OAuthSectionProps = {
+export type OAuthSectionProps = {
   authType: AuthType.Login | AuthType.SignUp;
 }
 
-function OAuthSection({ authType }: OAuthSectionProps) {
-  const { toast } = useToast();
-  const pb = usePocketBase();
+export function OAuthSection({ authType }: OAuthSectionProps) {
+  const { mutate: login } = useOAuth();
   const action = getAction(authType);
-  const handleOAuth = (provider = "") => {
-    return (async () => {
-      try {
-        await pb.collection('users').authWithOAuth2({ provider });
-      } catch (e) {
-        const { message } = e as ClientResponseError
-        console.error(e);
-        toast({
-          title: "Uh oh! Something went wrong.",
-          description: message,
-          variant: "destructive",
-        })
-      }
-    })
-  }
+  const handleOAuth = (provider = "github") => () => login(provider as Provider)
 
   switch (authType) {
     case AuthType.Login:

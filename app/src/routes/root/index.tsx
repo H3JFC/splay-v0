@@ -1,22 +1,55 @@
 import { useState } from 'react'
 import reactLogo from '@/assets/react.svg'
 import viteLogo from '/vite.svg'
-import PocketBase from 'pocketbase';
+import { usePocketBase,  ClientResponseError } from "@/lib/pocketbase"
+import { useToast } from "@/lib/hooks/use-toast"
+import { useNavigate } from "react-router-dom"
+import {
+  useMutation,
+  DefaultError,
+  UseMutationResult,
+  useQueryClient,
+} from '@tanstack/react-query';
 
-const pb = new PocketBase('/');
+function useLogout(): UseMutationResult<void, DefaultError, void> {
+  const pb = usePocketBase();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  return useMutation<void,
+    DefaultError,
+    void
+  >({
+    mutationFn: () => Promise.resolve(pb.authStore.clear()),
+    mutationKey: ['user'],
+    onError: (e) => {
+      let { message } = (e as ClientResponseError);
+      toast({
+        title: "Uh oh! Something went wrong.",
+        description: message,
+        variant: "destructive",
+      })
+      console.error(e);
+    },
+    onSuccess: () => {
+      queryClient.setQueryData(['user'], null);
+      toast({
+        title: "Goodbye! 👋",
+        description: "You have been logged out.",
+      })
+      setTimeout(() => navigate("/"), 250);
+    }
+  });
+}
 
 function App() {
   const [count, setCount] = useState(0)
-
-  const a = pb.collection('users').authWithPassword('hector.friedman.cintron@gmail.com','Password123')
-  a.then((res) => {
-    console.log(res)
-  }).catch((err) => {
-    console.log(err)
-  })
+  const { mutate: logout } = useLogout()
 
   return (
     <>
+      <button onClick={() => logout()}>logout</button>
       <div className="text-red-500">
         Hello World!
         <a href="https://vite.dev" target="_blank">

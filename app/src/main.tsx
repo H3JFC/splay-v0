@@ -14,6 +14,11 @@ import { PocketBaseProvider } from '@/lib/pocketbase'
 import { Toaster } from "@/components/ui/toaster"
 import PrivacyPolicy from './routes/privacy-policy'
 import TermsOfService from './routes/terms-of-service'
+import {
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 
 const router = createBrowserRouter([
   {
@@ -42,14 +47,25 @@ const router = createBrowserRouter([
     element: <TermsOfService />,
   }
 ])
+const TEN_MINUTES = 10 * 60 * 1000
 
 const pocketbaseURL = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8090' : '/';
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: TEN_MINUTES,
+    },
+  },
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PocketBaseProvider url={pocketbaseURL}>
-      <RouterProvider router={router} />
-      <Toaster />
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <Toaster />
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
     </PocketBaseProvider>
   </StrictMode>,
 )
