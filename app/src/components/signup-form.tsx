@@ -1,61 +1,23 @@
 import { useState } from "react"
-import { useToast } from "@/lib/hooks/use-toast"
-import { useNavigate } from "react-router-dom"
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { usePocketBase, ClientResponseError } from "@/lib/pocketbase"
 import { AuthFormWrapper, OAuthSection, Footer, AuthType } from "./auth-form"
-
-export type SignUpSubmit = {
-  email: string;
-  password: string;
-  passwordConfirm: string;
-}
+import { useSignup, SignUpSubmit } from "@/lib/hooks/use-signup";
 
 export type SignUpFormProps = {} & React.ComponentPropsWithoutRef<"div">;
 export function SignUpForm({
   ...props
 }: SignUpFormProps) {
-  const { toast } = useToast();
-  const pb = usePocketBase();
   const { register, handleSubmit, formState: { errors } } = useForm();
   const [passwordConfirmError, setPasswordConfirmError] = useState<string | null>(null)
-  const navigate = useNavigate();
+  const { mutate: signup } = useSignup();
 
   const validateAndSubmit = (e?: React.BaseSyntheticEvent): Promise<void> => {
-    e?.preventDefault();
-    const formData = new FormData(e?.target as HTMLFormElement);
-    let data: Partial<SignUpSubmit> = {};
-    for (const [key, value] of formData.entries()) {
-      // @ts-ignore
-      data[key] = value;
-    }
-
-    const { password, passwordConfirm } = data as SignUpSubmit;
-    if (password !== passwordConfirm) {
-      setPasswordConfirmError("Password Confirmation does not match Password");
-    }
-
-    return handleSubmit(onSubmit)(e)
-  }
-
-  const onSubmit = async (data: any) => {
-    const { email, password } = data as SignUpSubmit;
-    try {
-      await pb.collection('users').create({ email, password })
-      await pb.collection('users').authWithPassword(email, password)
-      navigate("/");
-    } catch (e) {
-      let { message } = (e as ClientResponseError);
-      console.error(e);
-      toast({
-        title: "Uh oh! Something went wrong.",
-        description: message,
-        variant: "destructive",
-      })
-    }
+    return validate(e)
+      .then(handleSubmit((data: any) => signup(data as SignUpSubmit)))
+      .catch(setPasswordConfirmError);
   }
 
   return (
@@ -111,4 +73,22 @@ export function SignUpForm({
       </form>
     </AuthFormWrapper>
   )
+}
+
+function validate(e?: React.BaseSyntheticEvent): Promise<React.BaseSyntheticEvent | undefined> {
+  e?.preventDefault();
+  const formData = new FormData(e?.target as HTMLFormElement);
+  let data: Partial<SignUpSubmit> = {};
+  for (const [key, value] of formData.entries()) {
+    // @ts-ignore
+    data[key] = value;
+  }
+
+  const { password, passwordConfirm } = data as SignUpSubmit;
+  if (password !== passwordConfirm) {
+    // setPasswordConfirmError("Password Confirmation does not match Password");
+    return Promise.reject("Password Confirmation does not match Password");
+  }
+
+  return Promise.resolve(e);
 }
