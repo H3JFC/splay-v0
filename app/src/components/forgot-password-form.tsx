@@ -1,10 +1,8 @@
-import { useToast } from "@/lib/hooks/use-toast"
-import { useNavigate } from "react-router-dom"
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { usePocketBase, ClientResponseError } from "@/lib/pocketbase"
+import { useResetPassword } from "@/lib/hooks/use-reset-password"
 import { AuthFormWrapper, Footer, AuthType } from "./auth-form"
 
 export type ForgotPasswordSubmit = {
@@ -15,32 +13,11 @@ export function ForgotPasswordForm({
   className,
   ...props
 }: ForgotPasswordFormProps) {
-  const pb = usePocketBase();
-  const { toast } = useToast();
+  const { mutate: resetPassword } = useResetPassword();
   const { register, handleSubmit, formState: { errors } } = useForm();
-  const navigate = useNavigate();
-
   const authType = AuthType.ForgotPassword;
 
-  const onSubmit = async (data: any) => {
-    const { email } = data as ForgotPasswordSubmit
-    try {
-      await pb.collection('users').requestPasswordReset(email)
-      toast({
-        title: "Password reset email sent.",
-        description: "Please check your email for instructions on how to reset your password.",
-      })
-      setTimeout(() => navigate("/login"), 1000);
-    } catch (error) {
-      let { message } = (error as ClientResponseError);
-      console.error(error);
-      toast({
-        title: "Uh oh! Something went wrong.",
-        description: message,
-        variant: "destructive",
-      })
-    }
-  }
+  const onSubmit = async (data: any) => resetPassword(data?.email as string);
 
   return (
     <AuthFormWrapper authType={AuthType.ForgotPassword} {...props}>

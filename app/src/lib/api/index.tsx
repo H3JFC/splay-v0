@@ -4,6 +4,7 @@ import { User } from '@/lib/models';
 interface APIInterface {
   login: (usernameOrEmail: string, password: string) => Promise<User>;
   oauthLogin: (provider: Provider) => Promise<User>;
+  resetPassword: (email: string) => Promise<boolean>;
 }
 
 export type Provider = 'github' | 'google';
@@ -25,5 +26,10 @@ export class API implements APIInterface {
     return await this.pb.collection('users')
       .authWithOAuth2({ provider })
       .then(({ record }) => record )
+  }
+
+  async resetPassword(email: string): Promise<boolean> {
+    return await this.pb.collection('users')
+      .requestPasswordReset(email)
   }
 }
