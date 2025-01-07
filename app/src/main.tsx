@@ -19,6 +19,7 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import LoggedInRedirect from '@/components/logged-in-redirect'
 
 const router = createBrowserRouter([
   {
@@ -28,15 +29,15 @@ const router = createBrowserRouter([
   },
   {
     path: "/login",
-    element: <Login />,
+    element: <LoggedInRedirect><Login /></LoggedInRedirect>,
   },
   {
     path: "/sign-up",
-    element: <SignUp />,
+    element: <LoggedInRedirect><SignUp /></LoggedInRedirect>,
   },
   {
     path: "/forgot-password",
-    element: <ForgotPassword />,
+    element: <LoggedInRedirect><ForgotPassword /></LoggedInRedirect>,
   },
   {
     path: "/privacy-policy",
