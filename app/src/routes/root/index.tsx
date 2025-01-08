@@ -9,6 +9,7 @@ function App() {
   const api = useAPI()
   const { mutate: logout } = useLogout()
   const isLoggedIn = api.isLoggedIn()
+  console.log(api)
 
   return (
     <>

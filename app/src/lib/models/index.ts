@@ -19,11 +19,15 @@ export interface Bucket extends Base {
   description: string;
 }
 
+export type BucketParams = Omit<Bucket, 'id' | 'created' | 'updated'>;
+
 export interface ForwardSetting extends Base {
   bucket: string;
   name: string;
   url: string;
 }
+
+export type ForwardSettingParams = Omit<ForwardSetting, 'id' | 'created' | 'updated'>;
 
 export interface BucketReceiveLog extends Base {
   bucket: string;
@@ -40,4 +44,3 @@ export interface BucketForwardLog extends Base {
   headers: Record<string, any>;
   status_code: number;
 }
-
