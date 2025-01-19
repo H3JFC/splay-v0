@@ -20,6 +20,7 @@ export interface Bucket extends Base {
 }
 
 export type BucketParams = Omit<Bucket, 'id' | 'created' | 'updated'>;
+export type BucketUpdateParams = Omit<Bucket, 'slug' | 'created' | 'updated'>;
 
 export interface ForwardSetting extends Base {
   bucket: string;

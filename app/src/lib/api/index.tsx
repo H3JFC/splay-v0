@@ -1,29 +1,37 @@
 import { CommonOptions, ListResult, RecordListOptions, RecordOptions, TypedPocketBase } from "../pocketbase";
 import { User, Bucket, BucketParams, ForwardSetting, ForwardSettingParams, BucketForwardLog, BucketReceiveLog } from '@/lib/models';
+export * from "@/lib/models";
 
-type ListForwardLogParams = { bucketID: string } | { bucketReceiveLogID: string };
+export type ListForwardLogParams = { bucketID: string } | { bucketReceiveLogID: string };
+export type ListBuckets = ListResult<Bucket>;
+export type ListForwardSettings = ListResult<ForwardSetting>;
+export type ListReceiveLogs = ListResult<BucketReceiveLog>;
+export type ListForwardLogs = ListResult<BucketForwardLog>;
+
 
 interface APIInterface {
   isLoggedIn: () => boolean;
   login: (usernameOrEmail: string, password: string) => Promise<User>;
+  userRefresh: () => Promise<User>;
   oauthLogin: (provider: Provider) => Promise<User>;
   resetPassword: (email: string) => Promise<boolean>;
   signup: ({ email, password, passwordConfirm }: SignupParams) => Promise<User>;
   logout: () => Promise<void>;
   createBucket: (params: BucketParams, options?: RecordOptions) => Promise<Bucket>;
   getBucket: (id: string) => Promise<Bucket>;
-  listBuckets: (page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListResult<Bucket>>;
+  getBucketBySlug: (slug: string) => Promise<Bucket>;
+  listBuckets: (page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListBuckets>;
   updateBucket: (id: string, params: Partial<BucketParams>, options?: RecordOptions) => Promise<Bucket>;
   deleteBucket: (id: string, options?: CommonOptions) => Promise<boolean>;
   createForwardSetting: (params: ForwardSettingParams, options?: RecordOptions) => Promise<ForwardSetting>;
   getForwardSetting: (id: string) => Promise<ForwardSetting>;
-  listForwardSettings: (bucketID: string, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListResult<ForwardSetting>>;
+  listForwardSettings: (bucketID: string, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListForwardSettings>;
   updateForwardSetting: (id: string, params: Partial<ForwardSettingParams>, options?: RecordOptions) => Promise<ForwardSetting>;
   deleteForwardSetting: (id: string, options?: CommonOptions) => Promise<boolean>;
   getBucketReceiveLog: (id: string) => Promise<BucketReceiveLog>;
-  listBucketReceiveLogs: (bucketID: string, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListResult<BucketReceiveLog>>;
+  listBucketReceiveLogs: (bucketID: string, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListReceiveLogs>;
   getBucketForwardLog: (id: string) => Promise<BucketForwardLog>;
-  listBucketForwardLogs: (params: ListForwardLogParams, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListResult<BucketForwardLog>>;
+  listBucketForwardLogs: (params: ListForwardLogParams, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListForwardLogs>;
 }
 
 export type Provider = 'github' | 'google';
@@ -43,6 +51,12 @@ export class API implements APIInterface {
 
   isLoggedIn(): boolean {
     return !!this.pb.authStore.isValid;
+  }
+
+  async userRefresh(): Promise<User> {
+    return await this.pb.collection('users')
+      .authRefresh()
+      .then(({ record }) => record)
   }
 
   async login(usernameOrEmail: string, password: string): Promise<User> {
@@ -79,6 +93,11 @@ export class API implements APIInterface {
     return await this.pb.collection('buckets').getOne(id)
   }
 
+  async getBucketBySlug(slug: string): Promise<Bucket> {
+    const filter = this.pb.filter("slug = {:slug}", { slug })
+    return await this.pb.collection('buckets').getFirstListItem(filter)
+  }
+
   async listBuckets(page: number = 1, perPage: number = 10, options: RecordListOptions = {}): Promise<ListResult<Bucket>> {
     return await this.pb.collection('buckets')
       .getList(page, perPage, options)
@@ -103,7 +122,7 @@ export class API implements APIInterface {
   async listForwardSettings(bucketID: string, page: number = 1, perPage: number = 10, options: RecordListOptions = {}): Promise<ListResult<ForwardSetting>> {
     options = {
       ...options,
-      filter: this.pb.filter("bucket == {:bucket}", { bucket: bucketID })
+      filter: this.pb.filter("bucket = {:bucket}", { bucket: bucketID })
     }
     return await this.pb.collection('forward_settings')
       .getList(page, perPage, options)
@@ -124,7 +143,7 @@ export class API implements APIInterface {
   async listBucketReceiveLogs(bucketID: string, page: number = 1, perPage: number = 10, options: RecordListOptions = {}): Promise<ListResult<BucketReceiveLog>> {
     options = {
       ...options,
-      filter: this.pb.filter("bucket == {:bucket}", { bucket: bucketID })
+      filter: this.pb.filter("bucket = {:bucket}", { bucket: bucketID })
     }
     return await this.pb.collection('bucket_receive_logs')
       .getList(page, perPage, options)
@@ -139,13 +158,13 @@ export class API implements APIInterface {
       const { bucketID } = params;
       options = {
         ...options,
-        filter: this.pb.filter("bucket == {:bucket}", { bucket: bucketID })
+        filter: this.pb.filter("bucket = {:bucket}", { bucket: bucketID })
       }
     } else {
       const { bucketReceiveLogID } = params;
       options = {
         ...options,
-        filter: this.pb.filter("bucket_receive_log == {:bucket_receive_log}", { bucket_receive_log: bucketReceiveLogID })
+        filter: this.pb.filter("bucket_receive_log = {:bucket_receive_log}", { bucket_receive_log: bucketReceiveLogID })
       }
     }
 
