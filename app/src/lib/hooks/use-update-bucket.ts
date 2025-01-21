@@ -36,12 +36,12 @@ export function useUpdateBucket(): UseMutationResult<Bucket, DefaultError, Bucke
       console.error(e);
     },
     onSuccess: (bucket: Bucket) => {
-      const { name, slug, id } = bucket;
+      const { name, slug } = bucket;
       toast({
         title: "Bucket Updated!",
         description: `"${name}" bucket with slug: "${slug}" updated!`,
       })
-      queryClient.setQueryData(['bucket', 'id', id], bucket);
+      queryClient.setQueryData(['bucket', 'slug', slug], bucket);
       queryClient.invalidateQueries({
         queryKey: ['buckets'],
       })

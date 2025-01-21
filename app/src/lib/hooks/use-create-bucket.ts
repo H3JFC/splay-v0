@@ -35,12 +35,12 @@ export function useCreateBucket(): UseMutationResult<Bucket, DefaultError, Bucke
       console.error(e);
     },
     onSuccess: (bucket: Bucket) => {
-      const { id, name, slug } = bucket;
+      const { name, slug } = bucket;
       toast({
         title: "Bucket Created!",
         description: `"${name}" bucket with slug: "${slug}" created!`,
       })
-      queryClient.setQueryData(['bucket', 'id', id], bucket);
+      queryClient.setQueryData(['bucket', 'slug', slug], bucket);
       queryClient.invalidateQueries({
         queryKey: ['buckets'],
       })

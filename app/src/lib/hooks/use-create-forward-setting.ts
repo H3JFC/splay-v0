@@ -26,7 +26,7 @@ export function useCreateForwardSettingBucket({ bucket }: UseCreateForwardSettin
       name,
       url
     }: IForwardSettingParams) => api.createForwardSetting({ bucket: bucket.id, name, url }),
-    mutationKey: ['bucket', 'id', bucket.id, 'forward-setting', 'new'],
+    mutationKey: ['bucket', 'slug', bucket.slug, 'forward-setting', 'new'],
     onError: (e) => {
       let { message } = (e as ClientResponseError);
       toast({
@@ -37,12 +37,12 @@ export function useCreateForwardSettingBucket({ bucket }: UseCreateForwardSettin
       console.error(e);
     },
     onSuccess: (forwardSetting: ForwardSetting) => {
-      const { name, url} = forwardSetting;
+      const { name, url } = forwardSetting;
       toast({
         title: "ForwardSetting Created!",
         description: `"${name}" forward-setting with url: "${url}" created!`,
       })
-      queryClient.invalidateQueries({ queryKey: ['bucket', 'id', bucket.id, 'forward-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['bucket', 'slug', bucket.slug, 'forward-settings'] });
     }
   });
 }

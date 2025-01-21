@@ -38,7 +38,7 @@ export function useDeleteForwardSetting({ bucket, onSuccess }: UseDeleteForwardS
         title: "Forward Setting Deleted!",
         description: `Successfully deleted buckets forward setting`,
       })
-      queryClient.invalidateQueries({ queryKey: ['bucket', 'id', bucket.id, 'forward-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['bucket', 'slug', bucket.slug, 'forward-settings'] });
     }
   });
 }

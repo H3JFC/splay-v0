@@ -125,7 +125,7 @@ type ForwardSettingProps = {
   bucket: Bucket;
 };
 function ListForwardSettings({ bucket }: ForwardSettingProps) {
-  const { data: listForwardSettings } = useForwardSettings(bucket.id);
+  const { data: listForwardSettings } = useForwardSettings(bucket);
   const { mutate: deleteForwardSetting } = useDeleteForwardSetting({ bucket })
   return (
     <div style={{ width: '100%' }} className="flex w-full max-w-sm flex-col gap-6 text-wrap">
