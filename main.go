@@ -65,6 +65,12 @@ var (
 	static fs.FS
 )
 
+type App struct {
+	*pocketbase.PocketBase
+	ForwardQuery  *dbx.Query
+	ReceivedQuery *dbx.Query
+}
+
 type Config struct {
 	Env    string `default:"development"`
 	Debug  bool   `default:"false"`
@@ -121,15 +127,53 @@ func init() {
 }
 
 func main() {
-	app := pocketbase.New()
+	app := NewApp()
 	app.OnServe().BindFunc(BindFunc(app, config))
+
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		receivedQuery := app.DB().NewQuery(insertBucketReceiveLog)
+		receivedQuery.Prepare()
+		app.ReceivedQuery = receivedQuery
+
+		forwardQuery := app.DB().NewQuery(insertBucketForwardLog)
+		forwardQuery.Prepare()
+		app.ForwardQuery = forwardQuery
+
+		return e.Next()
+	})
+
+	app.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
+		defer app.Close()
+
+		return nil
+	})
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func BindFunc(app *pocketbase.PocketBase, c Config) BoundFunc {
+func NewApp() *App {
+	app := pocketbase.New()
+	return &App{app, nil, nil}
+}
+
+func (a *App) Close() error {
+	closers := []func() error{
+		a.ForwardQuery.Close,
+		a.ReceivedQuery.Close,
+	}
+
+	for c := range closers {
+		if err := closers[c](); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func BindFunc(app *App, c Config) BoundFunc {
 	return func(se *core.ServeEvent) error {
 		se.Router.GET("/{path...}", apis.Static(static, true)).BindFunc(func(e *core.RequestEvent) error {
 			// ignore root path
@@ -165,7 +209,7 @@ type ForwardSetting struct {
 	BucketID string `json:"bucket_id,omitempty" db:"bucket"`
 }
 
-func HandleBucketReceive(app *pocketbase.PocketBase) RequestFunc {
+func HandleBucketReceive(app *App) RequestFunc {
 	return func(e *core.RequestEvent) error {
 		slug := e.Request.PathValue("slug")
 
@@ -209,14 +253,8 @@ func HandleBucketReceive(app *pocketbase.PocketBase) RequestFunc {
 			p["ip"] = ip
 		}
 
-		receivedQuery := app.DB().NewQuery(insertBucketReceiveLog)
-		receivedQuery.Prepare()
-		defer receivedQuery.Close()
-
-		receivedQuery.Bind(p)
-
 		brl := BucketReceiveLog{}
-		err = receivedQuery.One(&brl)
+		err = app.ReceivedQuery.Bind(p).One(&brl)
 		if err != nil {
 			return e.InternalServerError("could not insert bucket receive log", errors.Join(ErrInsertingReceiveLog, err))
 		}
@@ -242,7 +280,7 @@ func HandleBucketReceive(app *pocketbase.PocketBase) RequestFunc {
 	}
 }
 
-func ForwardLog(app *pocketbase.PocketBase, e *core.RequestEvent, brl *BucketReceiveLog, url, ip string, headers, body []byte) error {
+func ForwardLog(app *App, e *core.RequestEvent, brl *BucketReceiveLog, url, ip string, headers, body []byte) error {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return errors.Join(ErrCreatingRequest, err)
@@ -278,12 +316,7 @@ func ForwardLog(app *pocketbase.PocketBase, e *core.RequestEvent, brl *BucketRec
 		"updated":            created,
 	}
 
-	forwardQuery := app.DB().NewQuery(insertBucketForwardLog)
-	forwardQuery.Prepare()
-	defer forwardQuery.Close()
-
-	forwardQuery.Bind(p)
-	if _, err = forwardQuery.Execute(); err != nil {
+	if _, err = app.ForwardQuery.Bind(p).Execute(); err != nil {
 		return errors.Join(ErrInsertingForwardLog, err)
 	}
 
