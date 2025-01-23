@@ -7,7 +7,7 @@ tmp_dir = ".tmp"
   bin = "./.bin/splay serve"
   cmd = 'templ generate && go build -o ./.bin/splay -ldflags="-X main.Commit=$(git rev-parse --short HEAD)" ./main.go'
   delay = 3
-  exclude_dir = [".bin", "build", ".tmp", "vendor", "testdata", "app/dist"]
+  exclude_dir = [".bin", "build", ".tmp", "vendor", "testdata", "app"]
   exclude_file = []
   exclude_regex = ["_test.go", ".*_templ.go"]
   exclude_unchanged = false

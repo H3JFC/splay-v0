@@ -239,7 +239,7 @@ func HandleBucketReceive(app *App) RequestFunc {
 			return e.InternalServerError("err marshalling json headers", err)
 		}
 
-		created := time.Now()
+		created := time.Now().UTC()
 		p := dbx.Params{
 			"body":    string(bb),
 			"headers": string(hh),
@@ -304,7 +304,7 @@ func ForwardLog(app *App, e *core.RequestEvent, brl *BucketReceiveLog, url, ip s
 		app.Logger().Debug("Forwarding request failed", fmt.Sprintf("status code: %d", resp.StatusCode))
 	}
 
-	created := time.Now().Format(time.DateTime)
+	created := time.Now().UTC().Format(time.DateTime)
 	p := dbx.Params{
 		"bucket":             brl.Bucket,
 		"bucket_receive_log": brl.ID,

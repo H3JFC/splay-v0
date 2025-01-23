@@ -1,13 +1,17 @@
 import { CommonOptions, ListResult, RecordListOptions, RecordOptions, TypedPocketBase } from "../pocketbase";
-import { User, Bucket, BucketParams, ForwardSetting, ForwardSettingParams, BucketForwardLog, BucketReceiveLog } from '@/lib/models';
+import { User, Bucket, BucketParams, ForwardSetting, ForwardSettingParams, BucketForwardLog, BucketReceiveLog, Log } from '@/lib/models';
+import { Start, End, NowString, OneDayAgo } from "@/lib/datetime";
 export * from "@/lib/models";
 
-export type ListForwardLogParams = { bucketID: string } | { bucketReceiveLogID: string };
+export type ListReceiveLogParams = { bucketID?: string, start?: Start, end?: End, page?: number, perPage?: number, filterRaw?: string, filterParams?: filterParams };
+export type ListForwardLogParams = { bucketID?: string, bucketReceiveLogID?: string, start?: Start, end?: End, page?: number, perPage?: number, filterRaw?: string, filterParams?: filterParams };
+export type filterParams = { [key: string]: any }
 export type ListBuckets = ListResult<Bucket>;
 export type ListForwardSettings = ListResult<ForwardSetting>;
 export type ListReceiveLogs = ListResult<BucketReceiveLog>;
 export type ListForwardLogs = ListResult<BucketForwardLog>;
-
+export type ListLogs = ListResult<Log>;
+export type IndexedBucketForwardLogs = { [key: string]: BucketForwardLog[] }
 
 interface APIInterface {
   isLoggedIn: () => boolean;
@@ -29,9 +33,10 @@ interface APIInterface {
   updateForwardSetting: (id: string, params: Partial<ForwardSettingParams>, options?: RecordOptions) => Promise<ForwardSetting>;
   deleteForwardSetting: (id: string, options?: CommonOptions) => Promise<boolean>;
   getBucketReceiveLog: (id: string) => Promise<BucketReceiveLog>;
-  listBucketReceiveLogs: (bucketID: string, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListReceiveLogs>;
+  listBucketReceiveLogs: (params: ListReceiveLogParams, options?: Omit<RecordListOptions, 'filter'>) => Promise<ListReceiveLogs>;
   getBucketForwardLog: (id: string) => Promise<BucketForwardLog>;
-  listBucketForwardLogs: (params: ListForwardLogParams, page?: number, perPage?: number, options?: RecordListOptions) => Promise<ListForwardLogs>;
+  listBucketForwardLogs: (params: ListForwardLogParams, options?: RecordListOptions) => Promise<ListForwardLogs>;
+  listBucketLogs: (params: ListReceiveLogParams, options?: Omit<RecordListOptions, 'filter'>) => Promise<ListLogs>;
 }
 
 export type Provider = 'github' | 'google';
@@ -41,6 +46,8 @@ export interface SignupParams {
   password: string;
   passwordConfirm: string;
 }
+
+const DEFAULT_FILTER_RAW = "bucket = {:bucketID} && created >= {:start} && created < {:end}";
 
 export class API implements APIInterface {
   private pb: TypedPocketBase;
@@ -140,10 +147,29 @@ export class API implements APIInterface {
     return await this.pb.collection('bucket_receive_logs').getOne(id)
   }
 
-  async listBucketReceiveLogs(bucketID: string, page: number = 1, perPage: number = 10, options: RecordListOptions = {}): Promise<ListResult<BucketReceiveLog>> {
+  async listBucketReceiveLogs({
+    page = 1,
+    perPage = 10,
+    bucketID,
+    start = OneDayAgo(),
+    end = NowString(),
+    filterRaw = DEFAULT_FILTER_RAW,
+    filterParams = {} }: ListReceiveLogParams,
+    options: Omit<RecordListOptions, 'filter'> = {}): Promise<ListResult<BucketReceiveLog>> {
+
+    if (filterRaw === DEFAULT_FILTER_RAW) {
+      filterParams = {
+        bucketID,
+        start,
+        end,
+        ...filterParams,
+      }
+    }
+
     options = {
+      sort: '-created,+id',
       ...options,
-      filter: this.pb.filter("bucket = {:bucket}", { bucket: bucketID })
+      filter: this.pb.filter(filterRaw, filterParams),
     }
     return await this.pb.collection('bucket_receive_logs')
       .getList(page, perPage, options)
@@ -153,22 +179,63 @@ export class API implements APIInterface {
     return await this.pb.collection('bucket_forward_logs').getOne(id)
   }
 
-  async listBucketForwardLogs(params: ListForwardLogParams, page: number = 1, perPage: number = 10, options: RecordListOptions = {}): Promise<ListResult<BucketForwardLog>> {
-    if ('bucketID' in params) {
-      const { bucketID } = params;
-      options = {
-        ...options,
-        filter: this.pb.filter("bucket = {:bucket}", { bucket: bucketID })
+  async listBucketForwardLogs({
+    page = 1,
+    perPage = 1000,
+    bucketID,
+    start = OneDayAgo(),
+    end = NowString(),
+    filterRaw = DEFAULT_FILTER_RAW,
+    filterParams = {} }: ListForwardLogParams,
+    options: Omit<RecordListOptions, 'filter'> = {}): Promise<ListResult<BucketForwardLog>> {
+
+    if (filterRaw === DEFAULT_FILTER_RAW) {
+      filterParams = {
+        bucketID,
+        start,
+        end,
+        ...filterParams,
       }
-    } else {
-      const { bucketReceiveLogID } = params;
-      options = {
-        ...options,
-        filter: this.pb.filter("bucket_receive_log = {:bucket_receive_log}", { bucket_receive_log: bucketReceiveLogID })
-      }
+    }
+
+    options = {
+      sort: '-created,+id',
+      ...options,
+      filter: this.pb.filter(filterRaw, filterParams),
     }
 
     return await this.pb.collection('bucket_forward_logs')
       .getList(page, perPage, options)
+  }
+
+  async listLogs(params: ListReceiveLogParams, options: Omit<RecordListOptions, 'filter'> = {}): Promise<ListLogs> {
+    return Promise.all(
+      [
+        this.listBucketReceiveLogs(params, options),
+        // this doesn't scale if any one bucket has more than 1000 logs in a single query
+        this.listBucketForwardLogs({ ...params, page: 1, perPage: 1000 }, options),
+      ]
+    ).then(([{ items, totalItems, totalPages, page, perPage }, forwardLogs]) => {
+      const indexedForwardLogs: IndexedBucketForwardLogs = forwardLogs.items.reduce((acc = {}, forwardLog) => {
+        if (!acc[forwardLog.bucket_receive_log]) acc[forwardLog.bucket_receive_log] = [];
+
+        acc[forwardLog.bucket_receive_log].push(forwardLog);
+        return acc;
+      }, {} as IndexedBucketForwardLogs)
+
+      return {
+        items: items.map((receiveLog) => {
+          const forward_logs = indexedForwardLogs[receiveLog.id] || [];
+          return {
+            ...receiveLog,
+            forward_logs,
+          }
+        }),
+        totalItems,
+        totalPages,
+        page,
+        perPage,
+      }
+    })
   }
 }

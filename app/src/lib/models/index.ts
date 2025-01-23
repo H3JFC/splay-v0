@@ -45,3 +45,7 @@ export interface BucketForwardLog extends Base {
   headers: Record<string, any>;
   status_code: number;
 }
+
+export interface Log extends BucketReceiveLog {
+  forward_logs: BucketForwardLog[];
+}
