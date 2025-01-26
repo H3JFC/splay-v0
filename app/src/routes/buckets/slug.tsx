@@ -9,15 +9,19 @@ import { useUpdateBucket } from "@/lib/hooks/use-update-bucket";
 import { useForwardSettings } from "@/lib/hooks/use-forward-settings";
 import { useBucketLogs } from "@/lib/hooks/use-bucket-logs";
 import { useNavigate } from "react-router-dom"
-import { BucketUpdateParams, Bucket, ForwardSetting } from "@/lib/models"
+import { BucketUpdateParams, User, Bucket, ForwardSetting } from "@/lib/models"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { IForwardSettingParams, useCreateForwardSettingBucket } from "@/lib/hooks/use-create-forward-setting";
 import { TimeAgo, Now } from '@/lib/datetime'
+import { useAPI } from "@/lib/hooks/use-api";
+import { useUser } from "@/lib/hooks/use-user";
 
 export type BucketSlugProps = {};
 export default function BucketSlugPage({ }: BucketSlugProps) {
+  useUser().then((user) => setUser(user))
+  const [user, setUser] = useState<User | null>(null);
   const { slug } = useParams() as { slug: string }
   const navigate = useNavigate();
   const onSuccess = () => navigate("/buckets");
@@ -44,8 +48,8 @@ export default function BucketSlugPage({ }: BucketSlugProps) {
             </div>
           )}
         </div>
-        {!bucket && <div>Loading...</div>}
-        {bucket && (<>
+        {(!bucket || !user) && <div>Loading...</div>}
+        {bucket && user && (<>
           <div style={{ width: '100%' }} className="flex w-full max-w-sm flex-col gap-6 text-wrap">
             <UpdateForm bucket={bucket} />
           </div>
@@ -56,7 +60,7 @@ export default function BucketSlugPage({ }: BucketSlugProps) {
         }
         <div style={{ width: '100%' }} className="flex w-full max-w-sm flex-col gap-6 text-wrap">
           List Logs
-          {bucket && (<ListLogs bucket={bucket} />)}
+          {bucket && user && (<ListLogs user={user} bucket={bucket} />)}
         </div>
       </div>
     </LogOutRedirect>
@@ -202,11 +206,12 @@ function CreateForwardSettingForm({ bucket }: CreateForwardSettingFormParams) {
   )
 }
 
-type FooParams = {
+type ListLogsParams = {
+  user: User;
   bucket: Bucket;
 };
 
-function ListLogs({ bucket }: FooParams) {
+function ListLogs({ user, bucket }: ListLogsParams) {
   const [searchParams, setSearchParams] = useSearchParams();
   const startString = searchParams.get('start');
   const endString = searchParams.get('end');
@@ -217,6 +222,7 @@ function ListLogs({ bucket }: FooParams) {
   const [page, setPage] = useState(pageString && parseInt(pageString) || 1);
   const [perPage, setPerPage] = useState(perPageString && parseInt(perPageString) || 25);
   const [live, setLive] = useState(liveString && liveString === 'true' || false);
+  const api = useAPI()
 
   let defaultStart, defaultEnd;
   try {
@@ -252,6 +258,13 @@ function ListLogs({ bucket }: FooParams) {
   }
 
   useEffect(() => {
+    api.unsubUserBucketNotifications(user, bucket)
+    if (live) {
+      api.subUserBucketNotifications(user, bucket, (_) => {
+        refetch()
+      })
+    }
+
     setSearchParams(params => {
       params.set('start', start.toISOString());
       params.set('end', end.toISOString());

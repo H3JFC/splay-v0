@@ -36,7 +36,7 @@ interface APIInterface {
   listBucketReceiveLogs: (params: ListReceiveLogParams, options?: Omit<RecordListOptions, 'filter'>) => Promise<ListReceiveLogs>;
   getBucketForwardLog: (id: string) => Promise<BucketForwardLog>;
   listBucketForwardLogs: (params: ListForwardLogParams, options?: RecordListOptions) => Promise<ListForwardLogs>;
-  listBucketLogs: (params: ListReceiveLogParams, options?: Omit<RecordListOptions, 'filter'>) => Promise<ListLogs>;
+  listLogs: (params: ListReceiveLogParams, options?: Omit<RecordListOptions, 'filter'>) => Promise<ListLogs>;
 }
 
 export type Provider = 'github' | 'google';
@@ -237,5 +237,17 @@ export class API implements APIInterface {
         perPage,
       }
     })
+  }
+
+  subUserBucketNotifications(user: User, bucket: Bucket, cb: (data: any) => void) {
+    return this.pb.collection('users').subscribe(this.userBucketTopic(user, bucket), cb)
+  }
+
+  unsubUserBucketNotifications(user: User, bucket: Bucket) {
+    return this.pb.collection('users').unsubscribe(this.userBucketTopic(user, bucket))
+  }
+
+  private userBucketTopic(user: User, bucket: Bucket) {
+    return `${user.id}/buckets/${bucket.id}/logs`
   }
 }

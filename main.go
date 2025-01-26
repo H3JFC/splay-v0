@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"splay/pkg/priorityqueue"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -20,6 +23,8 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/subscriptions"
+	"golang.org/x/sync/errgroup"
 )
 
 // Dist is where the static files are stored
@@ -28,6 +33,9 @@ import (
 var AppDist embed.FS
 
 const (
+	pqSleepSeconds         = 1
+	earlyExitCode          = 2
+	notificationTTL        = time.Second * 5
 	StaticWildcardParam    = "path"
 	timeout                = 10 * time.Second
 	XForwardedFor          = "X-Forwarded-For"
@@ -52,6 +60,22 @@ var (
 	ErrForwardingRequest       = errors.New("Error forwarding request")
 )
 
+type Notification struct {
+	UserID   string
+	BucketID string
+}
+
+func (f Notification) ID() string {
+	return f.UserID + "/" + f.BucketID
+}
+
+func (f Notification) Subscription() string {
+	return "users/" + f.UserID + "/buckets/" + f.BucketID + "/logs"
+}
+
+type User struct {
+}
+
 var (
 	httpClient = &http.Client{
 		Timeout: timeout,
@@ -59,10 +83,10 @@ var (
 
 	// Commit is the git commit hash.
 	Commit string
-
 	config Config
-
 	static fs.FS
+
+	pq = priorityqueue.NewPriorityQueue[Notification]()
 )
 
 type App struct {
@@ -125,7 +149,6 @@ func init() {
 		os.Exit(1)
 	}
 }
-
 func main() {
 	app := NewApp()
 	app.OnServe().BindFunc(BindFunc(app, config))
@@ -148,8 +171,57 @@ func main() {
 		return nil
 	})
 
-	if err := app.Start(); err != nil {
-		log.Fatal(err)
+	interrupt := make(chan os.Signal, 1)
+	ctx := context.Background()
+
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(interrupt)
+
+	group, ctx := errgroup.WithContext(ctx)
+	group.Go(app.Start)
+	group.Go(func() error {
+		for {
+			<-time.After(time.Second * time.Duration(pqSleepSeconds))
+			if pq.Len() == 0 {
+				continue
+			}
+
+			clients := app.SubscriptionsBroker().Clients()
+			for notification := range pq.Items() {
+				app.Logger().Debug("Priority Queue Item: " + fmt.Sprintf("%+v", notification))
+
+				for key, client := range clients {
+					app.Logger().Debug("Priority Queue Length " + fmt.Sprintf("%+v", pq.Len()))
+					user, ok := client.Get(apis.RealtimeClientAuthKey).(*core.Record)
+					if !ok {
+						app.Logger().Warn("client could not be converted to record")
+						continue
+					}
+
+					app.Logger().Debug("client key " + key + "/" + user.Email() + "/" + user.Id)
+					subscription := notification.Subscription()
+					if !client.HasSubscription(subscription) || notification.UserID != user.Id {
+						continue
+					}
+
+					client.Send(subscriptions.Message{
+						Name: subscription,
+						Data: []byte("Refresh logs page"),
+					})
+				}
+			}
+		}
+	})
+
+	select {
+	case <-interrupt:
+		break
+	case <-ctx.Done():
+		break
+	}
+
+	if err := group.Wait(); err != nil {
+		defer os.Exit(earlyExitCode)
 	}
 }
 
@@ -188,7 +260,7 @@ func BindFunc(app *App, c Config) BoundFunc {
 			return e.Next()
 		}).Bind(apis.Gzip())
 
-		se.Router.POST("/buckets/{slug}", HandleBucketReceive(app))
+		se.Router.POST("/buckets/{slug}", HandleBucketReceive(app, pq))
 
 		return se.Next()
 	}
@@ -209,16 +281,16 @@ type ForwardSetting struct {
 	BucketID string `json:"bucket_id,omitempty" db:"bucket"`
 }
 
-func HandleBucketReceive(app *App) RequestFunc {
+func HandleBucketReceive(app *App, pq *priorityqueue.ThreadSafeQueue[Notification]) RequestFunc {
 	return func(e *core.RequestEvent) error {
 		slug := e.Request.PathValue("slug")
 
-		b := Bucket{}
+		bucket := Bucket{}
 		err := app.DB().
 			Select("id", "slug", "name", "description", "user").
 			From("buckets").
 			Where(dbx.NewExp("slug = {:slug}", dbx.Params{"slug": slug})).
-			One(&b)
+			One(&bucket)
 		if err != nil {
 			return e.NotFoundError("bucket not found", errors.Join(ErrFetchingBucket, err))
 		}
@@ -229,21 +301,21 @@ func HandleBucketReceive(app *App) RequestFunc {
 			return e.BadRequestError("body is not json", errors.Join(ErrDecodingBody, err))
 		}
 
-		bb, err := json.Marshal(body)
+		bodyBytes, err := json.Marshal(body)
 		if err != nil {
 			return e.InternalServerError("err marshalling json body", err)
 		}
 
-		hh, err := json.Marshal(e.Request.Header)
+		headerBytes, err := json.Marshal(e.Request.Header)
 		if err != nil {
 			return e.InternalServerError("err marshalling json headers", err)
 		}
 
 		created := time.Now().UTC()
 		p := dbx.Params{
-			"body":    string(bb),
-			"headers": string(hh),
-			"bucket":  b.ID,
+			"body":    string(bodyBytes),
+			"headers": string(headerBytes),
+			"bucket":  bucket.ID,
 			"created": created.Format(time.DateTime),
 			"updated": created.Format(time.DateTime),
 		}
@@ -259,22 +331,29 @@ func HandleBucketReceive(app *App) RequestFunc {
 			return e.InternalServerError("could not insert bucket receive log", errors.Join(ErrInsertingReceiveLog, err))
 		}
 
-		ff := []ForwardSetting{}
+		forwardSetting := []ForwardSetting{}
 		err = app.DB().
 			Select("id", "name", "url", "bucket").
 			From("forward_settings").
-			Where(dbx.NewExp("bucket = {:bucket}", dbx.Params{"bucket": b.ID})).
-			All(&ff)
+			Where(dbx.NewExp("bucket = {:bucket}", dbx.Params{"bucket": bucket.ID})).
+			All(&forwardSetting)
 		if err != nil {
 			return e.InternalServerError("could not fetch forward settings", errors.Join(ErrFetchingForwardSettings, err))
 		}
 
-		for _, f := range ff {
-			go func() {
-				// Running ForwardLog in a goroutine to avoid blocking the request and avoiding the error
-				_ = ForwardLog(app, e, &brl, f.URL, ip, hh, bb)
-			}()
-		}
+		go func() {
+			var wg sync.WaitGroup
+			for _, f := range forwardSetting {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					// Running ForwardLog in a goroutine to avoid blocking the request and avoiding the error
+					_ = ForwardLog(app, e, &brl, f.URL, ip, headerBytes, bodyBytes)
+				}()
+			}
+			wg.Wait()
+			pq.Push(Notification{UserID: bucket.UserID, BucketID: bucket.ID}, notificationTTL)
+		}()
 
 		return e.JSON(http.StatusOK, map[string]string{"success": "true"})
 	}

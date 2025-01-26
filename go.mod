@@ -7,6 +7,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/pocketbase/dbx v1.11.0
 	github.com/pocketbase/pocketbase v0.23.12
+	golang.org/x/exp v0.0.0-20231108232855-2478ac86f678
 )
 
 require (

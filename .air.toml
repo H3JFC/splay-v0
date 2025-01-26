@@ -4,7 +4,7 @@ tmp_dir = ".tmp"
 
 [build]
   args_bin = []
-  bin = "./.bin/splay serve"
+  bin = "./.bin/splay serve --dev"
   cmd = 'templ generate && go build -o ./.bin/splay -ldflags="-X main.Commit=$(git rev-parse --short HEAD)" ./main.go'
   delay = 3
   exclude_dir = [".bin", "build", ".tmp", "vendor", "testdata", "app"]

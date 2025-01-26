@@ -13,6 +13,9 @@ const DEFAULT_USER: User = {
   name: '',
   created: '',
   updated: '',
+  emailVisibility: false,
+  verified: false,
+  avatar: '',
 }
 
 type UserProviderInitialized = -1;
