@@ -5,51 +5,39 @@ import {
   RouterProvider,
 } from "react-router-dom"
 import './index.css'
-import Root from '@/routes/root'
-import Login from '@/routes/login'
-import SignUp from '@/routes/sign-up'
-import ForgotPassword from '@/routes/forgot-password'
-import ErrorPage from "@/error-page"
 import { PocketBaseProvider } from '@/lib/pocketbase'
 import { Toaster } from "@/components/ui/toaster"
-import PrivacyPolicy from './routes/privacy-policy'
-import TermsOfService from './routes/terms-of-service'
+import {
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { routes as R } from '@/routes'
+import { UserProvider } from '@/lib/auth'
 
-const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <Root />,
-    errorElement: <ErrorPage />,
-  },
-  {
-    path: "/login",
-    element: <Login />,
-  },
-  {
-    path: "/sign-up",
-    element: <SignUp />,
-  },
-  {
-    path: "/forgot-password",
-    element: <ForgotPassword />,
-  },
-  {
-    path: "/privacy-policy",
-    element: <PrivacyPolicy />,
-  },
-  {
-    path: "/terms-of-service",
-    element: <TermsOfService />,
-  }
-])
+const router = createBrowserRouter(R)
+const TEN_MINUTES = 10 * 60 * 1000
 
 const pocketbaseURL = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8090' : '/';
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: TEN_MINUTES,
+    },
+  },
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PocketBaseProvider url={pocketbaseURL}>
-      <RouterProvider router={router} />
-      <Toaster />
+      <QueryClientProvider client={queryClient}>
+        <UserProvider>
+          <RouterProvider router={router} />
+          <Toaster />
+          <ReactQueryDevtools initialIsOpen={false} />
+        </UserProvider>
+      </QueryClientProvider>
     </PocketBaseProvider>
   </StrictMode>,
 )
+

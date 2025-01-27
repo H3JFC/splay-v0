@@ -1,22 +1,20 @@
 import { useState } from 'react'
 import reactLogo from '@/assets/react.svg'
 import viteLogo from '/vite.svg'
-import PocketBase from 'pocketbase';
-
-const pb = new PocketBase('/');
+import { useLogout } from '@/lib/hooks/use-logout';
+import { useAPI } from '@/lib/hooks/use-api';
 
 function App() {
   const [count, setCount] = useState(0)
-
-  const a = pb.collection('users').authWithPassword('hector.friedman.cintron@gmail.com','Password123')
-  a.then((res) => {
-    console.log(res)
-  }).catch((err) => {
-    console.log(err)
-  })
+  const api = useAPI()
+  const { mutate: logout } = useLogout()
+  const isLoggedIn = api.isLoggedIn()
+  console.log(api)
 
   return (
     <>
+      { isLoggedIn ? <p>You are logged in</p> : <p>You are logged out</p> }
+      { isLoggedIn && (<button onClick={() => logout()}>logout</button>) }
       <div className="text-red-500">
         Hello World!
         <a href="https://vite.dev" target="_blank">
