@@ -23,8 +23,11 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 	"github.com/pocketbase/pocketbase/tools/subscriptions"
 	"golang.org/x/sync/errgroup"
+
+	_ "splay/migrations"
 )
 
 // Dist is where the static files are stored
@@ -171,56 +174,78 @@ func main() {
 		return nil
 	})
 
+	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
+		Automigrate: config.Env == "development",
+	})
+
 	interrupt := make(chan os.Signal, 1)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(interrupt)
 
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(app.Start)
-	group.Go(func() error {
-		for {
-			<-time.After(time.Second * time.Duration(pqSleepSeconds))
-			if pq.Len() == 0 {
-				continue
-			}
 
-			clients := app.SubscriptionsBroker().Clients()
-			for notification := range pq.Items() {
-				app.Logger().Debug("Priority Queue Item: " + fmt.Sprintf("%+v", notification))
-
-				for key, client := range clients {
-					app.Logger().Debug("Priority Queue Length " + fmt.Sprintf("%+v", pq.Len()))
-					user, ok := client.Get(apis.RealtimeClientAuthKey).(*core.Record)
-					if !ok {
-						app.Logger().Warn("client could not be converted to record")
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		slog.Info("Starting priority queue")
+		group.Go(func() error {
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				default:
+					<-time.After(time.Second * time.Duration(pqSleepSeconds))
+					if pq.Len() == 0 {
 						continue
 					}
 
-					app.Logger().Debug("client key " + key + "/" + user.Email() + "/" + user.Id)
-					subscription := notification.Subscription()
-					if !client.HasSubscription(subscription) || notification.UserID != user.Id {
-						continue
+					clients := app.SubscriptionsBroker().Clients()
+					for notification := range pq.Items() {
+						app.Logger().Debug("Priority Queue Item: " + fmt.Sprintf("%+v", notification))
+
+						for key, client := range clients {
+							app.Logger().Debug("Priority Queue Length " + fmt.Sprintf("%+v", pq.Len()))
+							user, ok := client.Get(apis.RealtimeClientAuthKey).(*core.Record)
+							if !ok {
+								app.Logger().Warn("client could not be converted to record")
+								continue
+							}
+
+							app.Logger().Debug("client key " + key + "/" + user.Email() + "/" + user.Id)
+							subscription := notification.Subscription()
+							if !client.HasSubscription(subscription) || notification.UserID != user.Id {
+								continue
+							}
+
+							client.Send(subscriptions.Message{
+								Name: subscription,
+								Data: []byte("Refresh logs page"),
+							})
+						}
 					}
 
-					client.Send(subscriptions.Message{
-						Name: subscription,
-						Data: []byte("Refresh logs page"),
-					})
 				}
 			}
-		}
-	})
+		})
 
-	select {
-	case <-interrupt:
-		break
-	case <-ctx.Done():
-		break
+		select {
+		case <-interrupt:
+			cancel()
+			slog.Info("received interrupt signal")
+
+			break
+		case <-ctx.Done():
+			cancel()
+			slog.Info("received done signal")
+
+			break
+		}
 	}
 
 	if err := group.Wait(); err != nil {
+		slog.Error(err.Error())
 		defer os.Exit(earlyExitCode)
 	}
 }
@@ -231,9 +256,13 @@ func NewApp() *App {
 }
 
 func (a *App) Close() error {
-	closers := []func() error{
-		a.ForwardQuery.Close,
-		a.ReceivedQuery.Close,
+	closers := []func() error{}
+	if a.ForwardQuery != nil {
+		closers = append(closers, a.ForwardQuery.Close)
+	}
+
+	if a.ReceivedQuery != nil {
+		closers = append(closers, a.ReceivedQuery.Close)
 	}
 
 	for c := range closers {
