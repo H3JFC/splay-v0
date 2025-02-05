@@ -1,4 +1,4 @@
-.PHONY: all help deps build recv serve ecr_login push
+.PHONY: all help deps build recv serve push
 
 ENV ?= production
 COMMIT := $(shell git rev-parse --short HEAD)
@@ -13,7 +13,6 @@ help:
 	@echo "  make build"
 	@echo "  make recv"
 	@echo "  make serve"
-	@echo "  make ecr_login"
 	@echo "  make push"
 
 deps:
@@ -24,9 +23,9 @@ deps:
 	@hash templ > /dev/null 2>&1 || (echo "Install templ to continue: https://templ.guide/quick-start/installation"; exit 1)
 
 build: deps
-	docker build -t ${IMAGE_NAME} -f Dockerfile ../; \
+	docker build -t ${IMAGE_NAME} -f Dockerfile .;
 	docker tag ${IMAGE_NAME}:latest ${ECR}/${IMAGE_NAME}:latest; \
-	docker tag ${IMAGE_NAME}:latest ${ECR}/${IMAGE_NAME}:${COMMIT};
+	docker tag ${IMAGE_NAME}:latest ${ECR}/${IMAGE_NAME}:${COMMIT}; \
 
 recv: deps
 	go run cmd/recv/main.go
@@ -34,10 +33,9 @@ recv: deps
 serve: deps
 	air -c .air.toml
 
-ecr_login: deps
-	aws ecr get-login-password --region us-east-1 | \
-		docker login --username AWS --password-stdin ${ECR}
+docker_login: deps
+	docker login
 
-push: deps ecr_login build
+push: deps docker_login build
 	docker push ${ECR}/${IMAGE_NAME}:latest; \
 	docker push ${ECR}/${IMAGE_NAME}:${COMMIT};

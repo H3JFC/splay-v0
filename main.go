@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "splay/migrations"
+
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
@@ -26,8 +28,6 @@ import (
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 	"github.com/pocketbase/pocketbase/tools/subscriptions"
 	"golang.org/x/sync/errgroup"
-
-	_ "splay/migrations"
 )
 
 // Dist is where the static files are stored
@@ -355,7 +355,11 @@ func HandleBucketReceive(app *App, pq *priorityqueue.ThreadSafeQueue[Notificatio
 		}
 
 		brl := BucketReceiveLog{}
-		err = app.ReceivedQuery.Bind(p).One(&brl)
+		receivedQuery := app.DB().NewQuery(insertBucketReceiveLog)
+		receivedQuery.Prepare()
+		defer receivedQuery.Close()
+
+		err = receivedQuery.Bind(p).One(&brl)
 		if err != nil {
 			return e.InternalServerError("could not insert bucket receive log", errors.Join(ErrInsertingReceiveLog, err))
 		}
@@ -371,13 +375,17 @@ func HandleBucketReceive(app *App, pq *priorityqueue.ThreadSafeQueue[Notificatio
 		}
 
 		go func() {
+			forwardQuery := app.DB().NewQuery(insertBucketForwardLog)
+			forwardQuery.Prepare()
+			defer forwardQuery.Close()
+
 			var wg sync.WaitGroup
 			for _, f := range forwardSetting {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 					// Running ForwardLog in a goroutine to avoid blocking the request and avoiding the error
-					_ = ForwardLog(app, e, &brl, f.URL, ip, headerBytes, bodyBytes)
+					_ = ForwardLog(app, forwardQuery, e, &brl, f.URL, ip, headerBytes, bodyBytes)
 				}()
 			}
 			wg.Wait()
@@ -388,7 +396,8 @@ func HandleBucketReceive(app *App, pq *priorityqueue.ThreadSafeQueue[Notificatio
 	}
 }
 
-func ForwardLog(app *App, e *core.RequestEvent, brl *BucketReceiveLog, url, ip string, headers, body []byte) error {
+// ForwardQuery  *dbx.Query
+func ForwardLog(app *App, forwardQuery *dbx.Query, e *core.RequestEvent, brl *BucketReceiveLog, url, ip string, headers, body []byte) error {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return errors.Join(ErrCreatingRequest, err)
@@ -424,7 +433,7 @@ func ForwardLog(app *App, e *core.RequestEvent, brl *BucketReceiveLog, url, ip s
 		"updated":            created,
 	}
 
-	if _, err = app.ForwardQuery.Bind(p).Execute(); err != nil {
+	if _, err = forwardQuery.Bind(p).Execute(); err != nil {
 		return errors.Join(ErrInsertingForwardLog, err)
 	}
 
