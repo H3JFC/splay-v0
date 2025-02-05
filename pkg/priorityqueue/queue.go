@@ -49,8 +49,8 @@ func (pq *PriorityQueue[T]) Pop() any {
 
 type ThreadSafeQueue[T Identifier] struct {
 	pq    *PriorityQueue[T]
-	mu    sync.Mutex
-	cache map[string]struct{}
+	mu    sync.RWMutex
+	cache sync.Map
 }
 
 type Identifier interface {
@@ -60,15 +60,14 @@ type Identifier interface {
 func NewPriorityQueue[T Identifier]() *ThreadSafeQueue[T] {
 	pq := &PriorityQueue[T]{}
 	heap.Init(pq)
-	cache := make(map[string]struct{})
-	return &ThreadSafeQueue[T]{pq, sync.Mutex{}, cache}
+	return &ThreadSafeQueue[T]{pq, sync.RWMutex{}, sync.Map{}}
 }
 
 func (q *ThreadSafeQueue[T]) Push(t T, ttl time.Duration) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if _, ok := q.cache[t.ID()]; ok {
+	if _, ok := q.cache.Load(t.ID()); ok {
 		return
 	}
 
@@ -78,7 +77,7 @@ func (q *ThreadSafeQueue[T]) Push(t T, ttl time.Duration) {
 	}
 
 	heap.Push(q.pq, i)
-	q.cache[t.ID()] = struct{}{}
+	q.cache.Store(t.ID(), struct{}{})
 }
 
 func (q *ThreadSafeQueue[T]) Pop() *Item[T] {
@@ -90,18 +89,21 @@ func (q *ThreadSafeQueue[T]) Pop() *Item[T] {
 	}
 
 	value := heap.Pop(q.pq).(*Item[T])
-	delete(q.cache, value.Value.ID())
+	q.cache.Delete(value.Value.ID())
 
 	return value
 }
 
 func (q *ThreadSafeQueue[T]) Len() int {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
 	return q.pq.Len()
 }
 
 func (q *ThreadSafeQueue[T]) Peek() *Item[T] {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+	q.mu.RLock()
+	defer q.mu.RUnlock()
 
 	if q.Len() == 0 {
 		return nil
@@ -111,6 +113,9 @@ func (q *ThreadSafeQueue[T]) Peek() *Item[T] {
 }
 
 func (q *ThreadSafeQueue[T]) Items() iter.Seq[T] {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	time := time.Now()
 
 	return func(yield func(T) bool) {

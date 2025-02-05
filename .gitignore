@@ -1,5 +1,6 @@
 # pocketbase development database
 pb_data/
+pb_public/
 
 # binaries for programs
 *.exe
