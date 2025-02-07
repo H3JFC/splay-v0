@@ -14,6 +14,7 @@ export type SignUpSubmit = {
   email: string;
   password: string;
   passwordConfirm: string;
+  signupCode: string;
 }
 
 export function useSignup(): UseMutationResult<User, DefaultError, SignUpSubmit> {
@@ -29,8 +30,9 @@ export function useSignup(): UseMutationResult<User, DefaultError, SignUpSubmit>
     mutationFn: ({
       email,
       password,
-      passwordConfirm
-    }: SignUpSubmit) => api.signup({ email, password, passwordConfirm }),
+      passwordConfirm,
+      signupCode: secret,
+    }: SignUpSubmit) => api.signup({ email, password, passwordConfirm, secret }),
     mutationKey: ['user'],
     onError: (e) => {
       let { message } = (e as ClientResponseError);

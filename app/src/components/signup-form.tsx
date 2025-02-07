@@ -64,6 +64,17 @@ export function SignUpForm({
                 {passwordConfirmError && <div>{passwordConfirmError}</div>}
               </div>
             </div>
+            <div className="grid gap-2">
+              <div className="flex items-center">
+                <Label htmlFor="SignupCode">Signup Code</Label>
+              </div>
+              <Input id="signupCode" type="string" onClick={() => setPasswordConfirmError(null)}
+                {...register("signupCode", { required: true })}
+              />
+              <div className="text-red-400 text-sm">
+                {errors.signupCode && errors.signupCode.type === "required" && <div>Signup Code is required</div>}
+              </div>
+            </div>
             <Button type="submit" className="w-full">
               Sign up
             </Button>

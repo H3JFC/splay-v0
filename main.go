@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"splay/pkg/priorityqueue"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -94,14 +95,14 @@ var (
 
 type App struct {
 	*pocketbase.PocketBase
-	ForwardQuery  *dbx.Query
-	ReceivedQuery *dbx.Query
 }
 
 type Config struct {
-	Env    string `default:"development"`
-	Debug  bool   `default:"false"`
-	Commit string `default:"" required:"false"`
+	Env           string `default:"development"`
+	Debug         bool   `default:"false"`
+	Commit        string `default:"" required:"false"`
+	Authorization string `default:"" required:"false"`
+	Secret        string `default:"" required:"false"`
 }
 
 type BoundFunc = func(e *core.ServeEvent) error
@@ -154,24 +155,14 @@ func init() {
 }
 func main() {
 	app := NewApp()
-	app.OnServe().BindFunc(BindFunc(app, config))
-
-	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		receivedQuery := app.DB().NewQuery(insertBucketReceiveLog)
-		receivedQuery.Prepare()
-		app.ReceivedQuery = receivedQuery
-
-		forwardQuery := app.DB().NewQuery(insertBucketForwardLog)
-		forwardQuery.Prepare()
-		app.ForwardQuery = forwardQuery
+	app.OnServe().BindFunc(BindServerEvent(app, config))
+	app.OnRecordCreateRequest("users").BindFunc(func(e *core.RecordRequestEvent) error {
+		secret := e.Request.Header.Get("Secret")
+		if secret != config.Secret {
+			return e.UnauthorizedError("unauthorized", nil)
+		}
 
 		return e.Next()
-	})
-
-	app.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
-		defer app.Close()
-
-		return nil
 	})
 
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
@@ -252,29 +243,10 @@ func main() {
 
 func NewApp() *App {
 	app := pocketbase.New()
-	return &App{app, nil, nil}
+	return &App{app}
 }
 
-func (a *App) Close() error {
-	closers := []func() error{}
-	if a.ForwardQuery != nil {
-		closers = append(closers, a.ForwardQuery.Close)
-	}
-
-	if a.ReceivedQuery != nil {
-		closers = append(closers, a.ReceivedQuery.Close)
-	}
-
-	for c := range closers {
-		if err := closers[c](); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func BindFunc(app *App, c Config) BoundFunc {
+func BindServerEvent(app *App, c Config) BoundFunc {
 	return func(se *core.ServeEvent) error {
 		se.Router.GET("/{path...}", apis.Static(static, true)).BindFunc(func(e *core.RequestEvent) error {
 			// ignore root path
@@ -313,6 +285,10 @@ type ForwardSetting struct {
 func HandleBucketReceive(app *App, pq *priorityqueue.ThreadSafeQueue[Notification]) RequestFunc {
 	return func(e *core.RequestEvent) error {
 		slug := e.Request.PathValue("slug")
+		auth := strings.Split(e.Request.Header.Get("Authorization"), "Bearer ")
+		if len(auth) < 2 || auth[1] != config.Authorization {
+			return e.UnauthorizedError("unauthorized", nil)
+		}
 
 		bucket := Bucket{}
 		err := app.DB().

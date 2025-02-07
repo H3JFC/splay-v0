@@ -45,6 +45,7 @@ export interface SignupParams {
   email: string;
   password: string;
   passwordConfirm: string;
+  secret: string;
 }
 
 const DEFAULT_FILTER_RAW = "bucket = {:bucketID} && created >= {:start} && created < {:end}";
@@ -83,7 +84,14 @@ export class API implements APIInterface {
       .requestPasswordReset(email)
   }
 
-  async signup({ email, password, passwordConfirm }: SignupParams): Promise<User> {
+  async signup({ email, password, passwordConfirm, secret }: SignupParams): Promise<User> {
+    this.pb.beforeSend = function(url, options) {
+      options.headers = Object.assign({}, options.headers, {
+        'Secret': secret,
+      });
+
+      return { url, options }
+    };
     return await this.pb.collection('users')
       .create({ email, password, passwordConfirm })
   }
