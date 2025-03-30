@@ -24,6 +24,7 @@ deps:
 
 build: deps
 	docker build -t ${IMAGE_NAME} -f Dockerfile .;
+	docker buildx build --platform linux/amd64 -t ${IMAGE_NAME} -f Dockerfile .; \
 	docker tag ${IMAGE_NAME}:latest ${ECR}/${IMAGE_NAME}:latest; \
 	docker tag ${IMAGE_NAME}:latest ${ECR}/${IMAGE_NAME}:${COMMIT}; \
 
@@ -38,4 +39,6 @@ docker_login: deps
 
 push: deps docker_login build
 	docker push ${ECR}/${IMAGE_NAME}:latest; \
-	docker push ${ECR}/${IMAGE_NAME}:${COMMIT};
+	docker push ${ECR}/${IMAGE_NAME}:${COMMIT}; \
+	docker buildx build --platform linux/amd64 --push -t ${ECR}/${IMAGE_NAME}:latest -f Dockerfile .; \
+	docker buildx build --platform linux/amd64 --push -t ${ECR}/${IMAGE_NAME}:${COMMIT} -f Dockerfile .; \
